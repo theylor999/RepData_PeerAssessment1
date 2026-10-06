@@ -1,25 +1,85 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: "theylor999"
+date: "2026-10-06"
 output: 
   html_document:
     keep_md: true
 ---
 
-
 ## Loading and preprocessing the data
 
+The data come from `activity.zip` (included in this repository). Unzip it and read the CSV; the `date` column is converted to class `Date`.
 
+```{r, echo=TRUE}
+if (!file.exists("activity.csv")) unzip("activity.zip")
+activity <- read.csv("activity.csv", stringsAsFactors = FALSE)
+activity$date <- as.Date(activity$date, format = "%Y-%m-%d")
+str(activity)
+head(activity)
+summary(activity)
+```
 
 ## What is mean total number of steps taken per day?
 
+Missing values are ignored in this part (rows with `NA` are dropped, so the 8 days that are completely missing do not appear).
 
+```{r, echo=TRUE}
+daily <- aggregate(steps ~ date, data = activity, FUN = sum)   # total steps per day
+hist(daily$steps, breaks = seq(0, 25000, by = 2500), col = "steelblue",
+     main = "Total steps per day (NAs ignored)", xlab = "Total steps per day")
+mean_steps   <- mean(daily$steps)
+median_steps <- median(daily$steps)
+mean_steps; median_steps
+```
 
 ## What is the average daily activity pattern?
 
+Average the steps of every 5-minute interval across all days (NAs removed) and draw a time series.
 
+```{r, echo=TRUE}
+pattern <- aggregate(steps ~ interval, data = activity, FUN = mean)
+plot(pattern$interval, pattern$steps, type = "l", col = "navy",
+     xlab = "5-minute interval", ylab = "Average steps (across all days)",
+     main = "Average daily activity pattern")
+pattern[which.max(pattern$steps), ]
+```
 
 ## Imputing missing values
 
+There are **2304** rows with `NA` in `steps` (all in 8 whole days). Strategy: replace every missing value with the **mean of its 5-minute interval** (across all days), then rebuild the histogram and the summary statistics.
 
+```{r, echo=TRUE}
+sum(is.na(activity$steps))           # total number of rows with NA
+
+filled <- activity
+idx <- is.na(filled$steps)
+filled$steps[idx] <- pattern$steps[match(filled$interval[idx], pattern$interval)]
+sum(is.na(filled$steps))
+
+daily2 <- aggregate(steps ~ date, data = filled, FUN = sum)
+hist(daily2$steps, breaks = seq(0, 25000, by = 2500), col = "darkorange",
+     main = "Total steps per day (NAs imputed)", xlab = "Total steps per day")
+mean(daily2$steps); median(daily2$steps)
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Using the filled-in dataset, a factor `daytype` (weekday / weekend) is created from the date, then the interval means are computed per level and drawn as a two-panel lattice plot.
+
+```{r, echo=TRUE}
+library(lattice)
+filled$daytype <- factor(ifelse(weekdays(filled$date, abbreviate = TRUE) %in% c("Sat", "Sun"),
+                                "weekend", "weekday"))
+pattern2 <- aggregate(steps ~ interval + daytype, data = filled, FUN = mean)
+xyplot(steps ~ interval | daytype, data = pattern2, type = "l",
+       layout = c(1, 2), xlab = "Interval", ylab = "Number of steps")
+```
+
+## Conclusions
+
+* Ignoring missing values, the mean total of steps per day is **10766.19** and the median is **10765** (based on 53 complete days).
+* On average, the interval with the most steps is **835** (08:35 in the morning) with **206.2** steps.
+* After imputing the 2304 missing values with interval means the mean stays at **10766.19** and the median moves slightly from 10765 to **10766.19** (now equal to the mean). The 8 imputed days all take the average value, which adds 8 days to the centre bin of the histogram. Total daily steps are unchanged on average, but the number of days in the middle bin increases.
+* Weekdays show a sharp morning peak (about 230 steps near interval 835) and little activity later; weekends are flatter and more spread through the day (peak 167 steps near interval 915). Mean steps per interval: 35.6 on weekdays and 42.4 on weekends, so the subject is more active on weekends.
+
